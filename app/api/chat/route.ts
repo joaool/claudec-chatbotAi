@@ -4,6 +4,14 @@ import { connectDB } from '@/lib/mongodb';
 import Conversation from '@/models/Conversation';
 import Assistant from '@/models/Assistant';
 
+function getClientIp(request: NextRequest): string {
+  return (
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown'
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { message, sessionId, assistantId } = await request.json();
@@ -15,9 +23,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userIp = getClientIp(request);
+
     await connectDB();
 
-    // Resolve which assistant to use
     const assistant = assistantId
       ? await Assistant.findById(assistantId)
       : await Assistant.findOne({ isDefault: true });
@@ -29,7 +38,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call OpenAI Responses API with file_search (RAG)
     const response = await openai.responses.create({
       model: assistant.model,
       instructions: assistant.instructions,
@@ -61,13 +69,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Persist to MongoDB
     await Conversation.create({
       sessionId,
       assistantId: assistant._id.toString(),
       question: message.trim(),
       answer,
       sources,
+      userIp,
     });
 
     return NextResponse.json({ answer, sources });

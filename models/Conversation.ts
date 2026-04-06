@@ -6,6 +6,7 @@ export interface IConversation extends Document {
   question: string;
   answer: string;
   sources: string[];
+  userIp: string;
   timestamp: Date;
 }
 
@@ -15,11 +16,13 @@ const ConversationSchema = new Schema<IConversation>({
   question:    { type: String, required: true },
   answer:      { type: String, required: true },
   sources:     { type: [String], default: [] },
+  userIp:      { type: String, default: '' },
   timestamp:   { type: Date, default: Date.now },
 });
 
 ConversationSchema.index({ question: 'text' });
 ConversationSchema.index({ timestamp: -1 });
+ConversationSchema.index({ sessionId: 1 });
 
 export default mongoose.models.Conversation ||
   mongoose.model<IConversation>('Conversation', ConversationSchema);

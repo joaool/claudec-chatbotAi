@@ -3,10 +3,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 interface Conversation {
   _id: string;
+  sessionId: string;
   question: string;
   answer: string;
   assistantName: string;
   sources: string[];
+  userIp: string;
   timestamp: string;
 }
 
@@ -128,6 +130,8 @@ export default function AnalyticsTable() {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-gray-700">Question</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">IP</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Session</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Assistant</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Date</th>
                 <th className="px-4 py-3 w-16" />
@@ -140,6 +144,8 @@ export default function AnalyticsTable() {
                     <td className="px-4 py-3 text-gray-800 max-w-sm">
                       <p className="truncate">{conv.question}</p>
                     </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap font-mono text-xs">{conv.userIp || '—'}</td>
+                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap font-mono text-xs" title={conv.sessionId}>{conv.sessionId?.slice(0, 8)}…</td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{conv.assistantName}</td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmt(conv.timestamp)}</td>
                     <td className="px-4 py-3 text-right">
@@ -176,6 +182,10 @@ export default function AnalyticsTable() {
                               </div>
                             </div>
                           )}
+                          <div className="flex gap-6 text-xs text-gray-400 font-mono pt-1">
+                            <span><span className="font-semibold text-gray-500 not-italic">IP:</span> {conv.userIp || '—'}</span>
+                            <span><span className="font-semibold text-gray-500 not-italic">Session:</span> {conv.sessionId}</span>
+                          </div>
                         </div>
                       </td>
                     </tr>

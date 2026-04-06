@@ -21,12 +21,12 @@ export default function Home() {
   const [sessionId, setSessionId] = useState('');
   const [brand, setBrand] = useState<BrandConfig>({ label: process.env.NEXT_PUBLIC_APP_NAME ?? 'Chatbot AI', iconDataUrl: '' });
 
-  // Initialize sessionId on the client (avoids SSR mismatch)
+  // Initialize sessionId — persisted in localStorage so it survives tab closes
   useEffect(() => {
-    let id = sessionStorage.getItem('chat_session_id');
+    let id = localStorage.getItem('chat_session_id');
     if (!id) {
       id = uuidv4();
-      sessionStorage.setItem('chat_session_id', id);
+      localStorage.setItem('chat_session_id', id);
     }
     setSessionId(id);
   }, []);
