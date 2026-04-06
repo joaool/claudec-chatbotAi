@@ -20,8 +20,8 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // ── FrameLink super admin API (except auth) ───────────────────────────────
-  if (pathname.startsWith('/api/admin') && !pathname.startsWith('/api/admin/auth')) {
+  // ── FrameLink super admin API (except auth and migrate) ──────────────────
+  if (pathname.startsWith('/api/admin') && !pathname.startsWith('/api/admin/auth') && !pathname.startsWith('/api/admin/migrate')) {
     const token = getToken(request, 'admin_token');
     const payload = token ? await verifyToken(token) : null;
     if (payload?.role !== 'superadmin') {
