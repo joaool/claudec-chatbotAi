@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { toFile } from 'openai';
+import mongoose from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
 import { decrypt } from '@/lib/crypto';
 import Assistant from '@/models/Assistant';
-import Client from '@/models/Client';
 
 async function getContext(slug: string, assistantId?: string | null) {
-  const clientDoc = await Client.findOne({ slug, isActive: true });
+  const db = mongoose.connection.db!;
+  const clientDoc = await db.collection('clients').findOne({ slug, isActive: true });
   if (!clientDoc) return null;
-  const apiKey = decrypt(clientDoc.openaiApiKeyEncrypted);
+  const apiKey = decrypt(clientDoc.openaiApiKeyEncrypted as string ?? '');
   if (!apiKey) return null;
   const openai = new OpenAI({ apiKey });
   const clientId = clientDoc._id.toString();

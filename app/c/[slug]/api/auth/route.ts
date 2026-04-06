@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
 import { signClientToken } from '@/lib/auth';
-import Client from '@/models/Client';
 
 export async function POST(
   request: NextRequest,
@@ -17,18 +17,20 @@ export async function POST(
     }
 
     await connectDB();
-    const client = await Client.findOne({ slug, isActive: true });
+    const db = mongoose.connection.db!;
+    const client = await db.collection('clients').findOne({ slug, isActive: true });
 
-    if (!client?.clientPasswordHash) {
+    const hash = client?.clientPasswordHash as string | undefined;
+    if (!hash) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
     }
 
-    const match = await bcrypt.compare(password, client.clientPasswordHash);
+    const match = await bcrypt.compare(password, hash);
     if (!match) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
     }
 
-    const token = await signClientToken(client._id.toString(), slug);
+    const token = await signClientToken(client!._id.toString(), slug);
     const response = NextResponse.json({ success: true });
     response.cookies.set(`client_token_${slug}`, token, {
       httpOnly: true,

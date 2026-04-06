@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import mongoose from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
 import { decrypt } from '@/lib/crypto';
 import Assistant from '@/models/Assistant';
-import Client from '@/models/Client';
 
 async function getOpenAI(slug: string) {
-  const client = await Client.findOne({ slug, isActive: true });
-  if (!client) return null;
-  const apiKey = decrypt(client.openaiApiKeyEncrypted);
-  if (!apiKey) return null;
+  const db = mongoose.connection.db!;
+  const client = await db.collection('clients').findOne({ slug, isActive: true });
+  if (!client) {
+    console.error(`[getOpenAI] No active client found for slug="${slug}"`);
+    return null;
+  }
+  const encrypted = client.openaiApiKeyEncrypted as string | undefined;
+  if (!encrypted) {
+    console.error(`[getOpenAI] openaiApiKeyEncrypted is empty for slug="${slug}"`);
+    return null;
+  }
+  const apiKey = decrypt(encrypted);
+  if (!apiKey) {
+    console.error(`[getOpenAI] decrypt returned empty string for slug="${slug}" — JWT_SECRET mismatch?`);
+    return null;
+  }
   return { openai: new OpenAI({ apiKey }), clientId: client._id.toString() };
 }
 
@@ -46,7 +58,13 @@ export async function POST(
     const ctx = await getOpenAI(slug);
     if (!ctx) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
 
-    const vectorStore = await ctx.openai.vectorStores.create({ name: `${name} - Knowledge Base` });
+    let vectorStore;
+    try {
+      vectorStore = await ctx.openai.vectorStores.create({ name: `${name} - Knowledge Base` });
+    } catch (openaiErr) {
+      console.error('[client assistants POST] OpenAI vectorStores.create failed:', openaiErr);
+      return NextResponse.json({ error: 'Failed to create vector store — check OpenAI API key' }, { status: 502 });
+    }
     if (makeDefault) await Assistant.updateMany({ clientId: ctx.clientId }, { isDefault: false });
 
     const assistant = await Assistant.create({

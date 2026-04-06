@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import mongoose from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
 import { decrypt } from '@/lib/crypto';
 import Conversation from '@/models/Conversation';
 import Assistant from '@/models/Assistant';
-import Client from '@/models/Client';
 
 function getClientIp(request: NextRequest): string {
   return (
@@ -41,17 +41,19 @@ export async function POST(
 
     await connectDB();
 
-    const client = await Client.findOne({ slug, isActive: true });
+    const db = mongoose.connection.db!;
+    const client = await db.collection('clients').findOne({ slug, isActive: true });
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
 
-    const apiKey = decrypt(client.openaiApiKeyEncrypted);
+    const apiKey = decrypt(client.openaiApiKeyEncrypted as string ?? '');
     if (!apiKey) return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 });
 
     const openai = new OpenAI({ apiKey });
+    const clientId = client._id.toString();
 
     const assistant = assistantId
-      ? await Assistant.findOne({ _id: assistantId, clientId: client._id.toString() })
-      : await Assistant.findOne({ clientId: client._id.toString(), isDefault: true });
+      ? await Assistant.findOne({ _id: assistantId, clientId })
+      : await Assistant.findOne({ clientId, isDefault: true });
 
     if (!assistant) {
       return NextResponse.json({ error: 'No assistant configured.' }, { status: 404 });
@@ -86,7 +88,7 @@ export async function POST(
     }
 
     await Conversation.create({
-      clientId: client._id.toString(),
+      clientId,
       sessionId,
       assistantId: assistant._id.toString(),
       question: message.trim(),
