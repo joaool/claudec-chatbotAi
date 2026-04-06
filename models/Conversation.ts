@@ -7,6 +7,9 @@ export interface IConversation extends Document {
   answer: string;
   sources: string[];
   userIp: string;
+  country: string;
+  regionName: string;
+  city: string;
   timestamp: Date;
 }
 
@@ -17,6 +20,9 @@ const ConversationSchema = new Schema<IConversation>({
   answer:      { type: String, required: true },
   sources:     { type: [String], default: [] },
   userIp:      { type: String, default: '' },
+  country:     { type: String, default: '' },
+  regionName:  { type: String, default: '' },
+  city:        { type: String, default: '' },
   timestamp:   { type: Date, default: Date.now },
 });
 

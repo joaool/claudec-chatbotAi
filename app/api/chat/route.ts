@@ -12,6 +12,30 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
+interface GeoData {
+  country: string;
+  regionName: string;
+  city: string;
+}
+
+async function getGeoData(ip: string): Promise<GeoData> {
+  const empty = { country: '', regionName: '', city: '' };
+  // Skip lookup for private/unknown IPs
+  if (!ip || ip === 'unknown' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip === '127.0.0.1' || ip === '::1') {
+    return empty;
+  }
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    const data = await res.json();
+    if (data.status !== 'success') return empty;
+    return { country: data.country || '', regionName: data.regionName || '', city: data.city || '' };
+  } catch {
+    return empty;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { message, sessionId, assistantId } = await request.json();
@@ -24,6 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userIp = getClientIp(request);
+    const geo = await getGeoData(userIp);
 
     await connectDB();
 
@@ -76,6 +101,9 @@ export async function POST(request: NextRequest) {
       answer,
       sources,
       userIp,
+      country:    geo.country,
+      regionName: geo.regionName,
+      city:       geo.city,
     });
 
     return NextResponse.json({ answer, sources });

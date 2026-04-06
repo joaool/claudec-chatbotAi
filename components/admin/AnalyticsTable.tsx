@@ -9,6 +9,9 @@ interface Conversation {
   assistantName: string;
   sources: string[];
   userIp: string;
+  country: string;
+  regionName: string;
+  city: string;
   timestamp: string;
 }
 
@@ -131,6 +134,9 @@ export default function AnalyticsTable() {
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-gray-700">Question</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">IP</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">City</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Region</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Country</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Session</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Assistant</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Date</th>
@@ -145,6 +151,9 @@ export default function AnalyticsTable() {
                       <p className="truncate">{conv.question}</p>
                     </td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap font-mono text-xs">{conv.userIp || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">{conv.city || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">{conv.regionName || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">{conv.country || '—'}</td>
                     <td className="px-4 py-3 text-gray-400 whitespace-nowrap font-mono text-xs" title={conv.sessionId}>{conv.sessionId?.slice(0, 8)}…</td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{conv.assistantName}</td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmt(conv.timestamp)}</td>
@@ -182,8 +191,11 @@ export default function AnalyticsTable() {
                               </div>
                             </div>
                           )}
-                          <div className="flex gap-6 text-xs text-gray-400 font-mono pt-1">
+                          <div className="flex flex-wrap gap-6 text-xs text-gray-400 font-mono pt-1">
                             <span><span className="font-semibold text-gray-500 not-italic">IP:</span> {conv.userIp || '—'}</span>
+                            {conv.city      && <span><span className="font-semibold text-gray-500 not-italic">City:</span> {conv.city}</span>}
+                            {conv.regionName && <span><span className="font-semibold text-gray-500 not-italic">Region:</span> {conv.regionName}</span>}
+                            {conv.country   && <span><span className="font-semibold text-gray-500 not-italic">Country:</span> {conv.country}</span>}
                             <span><span className="font-semibold text-gray-500 not-italic">Session:</span> {conv.sessionId}</span>
                           </div>
                         </div>
