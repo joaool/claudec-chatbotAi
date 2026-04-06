@@ -1,13 +1,11 @@
-import AnalyticsTable from '@/components/admin/AnalyticsTable';
+import SuperAnalyticsTable from '@/components/admin/SuperAnalyticsTable';
 
-export default function AnalyticsPage() {
+export default function SuperAnalyticsPage() {
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900 mb-2">Analytics</h1>
-      <p className="text-sm text-gray-500 mb-8">
-        Browse and search all user questions and AI responses. Filter by keyword or date range.
-      </p>
-      <AnalyticsTable />
+      <h1 className="text-2xl font-semibold text-gray-900 mb-2">Analytics — All Clients</h1>
+      <p className="text-sm text-gray-500 mb-8">Browse conversations across all clients. Filter by client, keyword, or date.</p>
+      <SuperAnalyticsTable />
     </div>
   );
 }

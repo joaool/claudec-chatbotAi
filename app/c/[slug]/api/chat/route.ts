@@ -1,0 +1,104 @@
+import { NextRequest, NextResponse } from 'next/server';
+import OpenAI from 'openai';
+import { connectDB } from '@/lib/mongodb';
+import { decrypt } from '@/lib/crypto';
+import Conversation from '@/models/Conversation';
+import Assistant from '@/models/Assistant';
+import Client from '@/models/Client';
+
+function getClientIp(request: NextRequest): string {
+  return (
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown'
+  );
+}
+
+async function getGeoData(ip: string) {
+  const empty = { country: '', regionName: '', city: '' };
+  if (!ip || ip === 'unknown' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip === '127.0.0.1' || ip === '::1') return empty;
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    const data = await res.json();
+    if (data.status !== 'success') return empty;
+    return { country: data.country || '', regionName: data.regionName || '', city: data.city || '' };
+  } catch { return empty; }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
+) {
+  try {
+    const { slug } = await params;
+    const { message, sessionId, assistantId } = await request.json();
+
+    if (!message?.trim() || !sessionId) {
+      return NextResponse.json({ error: 'message and sessionId are required' }, { status: 400 });
+    }
+
+    await connectDB();
+
+    const client = await Client.findOne({ slug, isActive: true });
+    if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+
+    const apiKey = decrypt(client.openaiApiKeyEncrypted);
+    if (!apiKey) return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 });
+
+    const openai = new OpenAI({ apiKey });
+
+    const assistant = assistantId
+      ? await Assistant.findOne({ _id: assistantId, clientId: client._id.toString() })
+      : await Assistant.findOne({ clientId: client._id.toString(), isDefault: true });
+
+    if (!assistant) {
+      return NextResponse.json({ error: 'No assistant configured.' }, { status: 404 });
+    }
+
+    const userIp = getClientIp(request);
+    const [geo, response] = await Promise.all([
+      getGeoData(userIp),
+      openai.responses.create({
+        model: assistant.model,
+        instructions: assistant.instructions,
+        input: message.trim(),
+        tools: [{ type: 'file_search', vector_store_ids: [assistant.vectorStoreId] }],
+      }),
+    ]);
+
+    const answer = response.output_text;
+    const sources: string[] = [];
+    for (const item of response.output) {
+      if (item.type === 'message') {
+        for (const block of item.content) {
+          if (block.type === 'output_text') {
+            for (const annotation of block.annotations) {
+              if (annotation.type === 'file_citation') {
+                const name = (annotation as { filename?: string }).filename ?? annotation.file_id;
+                if (name && !sources.includes(name)) sources.push(name);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    await Conversation.create({
+      clientId: client._id.toString(),
+      sessionId,
+      assistantId: assistant._id.toString(),
+      question: message.trim(),
+      answer,
+      sources,
+      userIp,
+      ...geo,
+    });
+
+    return NextResponse.json({ answer, sources });
+  } catch (error) {
+    console.error('[client chat]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

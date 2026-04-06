@@ -3,26 +3,23 @@ import mongoose from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
 import Conversation from '@/models/Conversation';
 import Assistant from '@/models/Assistant';
+import Client from '@/models/Client';
 
-// GET /api/admin/analytics?search=&dateFrom=&dateTo=&page=
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const search   = searchParams.get('search') || '';
     const dateFrom = searchParams.get('dateFrom');
     const dateTo   = searchParams.get('dateTo');
+    const clientId = searchParams.get('clientId') || '';
     const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
     const limit    = 20;
 
     await connectDB();
 
-    // Build MongoDB query
     const query: Record<string, unknown> = {};
-
-    if (search) {
-      query.$text = { $search: search };
-    }
-
+    if (clientId) query.clientId = clientId;
+    if (search)   query.$text = { $search: search };
     if (dateFrom || dateTo) {
       const range: Record<string, Date> = {};
       if (dateFrom) range.$gte = new Date(dateFrom);
@@ -32,35 +29,32 @@ export async function GET(request: NextRequest) {
 
     const [total, conversations] = await Promise.all([
       Conversation.countDocuments(query),
-      Conversation.find(query)
-        .sort({ timestamp: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
+      Conversation.find(query).sort({ timestamp: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     ]);
 
-    // Enrich with assistant names
     const assistantIds = [...new Set(conversations.map((c) => c.assistantId))];
-    const assistants = await Assistant.find({ _id: { $in: assistantIds } })
-      .select('name')
-      .lean<Array<{ _id: mongoose.Types.ObjectId; name: string }>>();
-    const nameMap = Object.fromEntries(
-      assistants.map((a) => [a._id.toString(), a.name])
-    );
+    const clientIds    = [...new Set(conversations.map((c) => c.clientId))];
+
+    const [assistants, clients] = await Promise.all([
+      Assistant.find({ _id: { $in: assistantIds } }).select('name').lean<Array<{ _id: mongoose.Types.ObjectId; name: string }>>(),
+      Client.find({ _id: { $in: clientIds } }).select('name slug').lean<Array<{ _id: mongoose.Types.ObjectId; name: string; slug: string }>>(),
+    ]);
+
+    const assistantMap = Object.fromEntries(assistants.map((a) => [a._id.toString(), a.name]));
+    const clientMap    = Object.fromEntries(clients.map((c) => [c._id.toString(), `${c.name} (${c.slug})`]));
 
     const enriched = conversations.map((c) => ({
       ...c,
-      assistantName: nameMap[c.assistantId] ?? 'Unknown',
+      assistantName: assistantMap[c.assistantId] ?? 'Unknown',
+      clientName:    clientMap[c.clientId]       ?? 'Unknown',
     }));
 
-    return NextResponse.json({
-      conversations: enriched,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    });
+    // Also return all clients for the filter dropdown
+    const allClients = await Client.find().select('_id name slug').lean();
+
+    return NextResponse.json({ conversations: enriched, total, page, totalPages: Math.ceil(total / limit), allClients });
   } catch (error) {
-    console.error('[analytics GET]', error);
+    console.error('[admin analytics GET]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

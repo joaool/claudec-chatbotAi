@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-// 'model' conflicts with Mongoose's Document.model method; use Omit to override
 export type IAssistant = Omit<Document, 'model'> & {
+  clientId: string;
   name: string;
   instructions: string;
   model: string;
@@ -13,6 +13,7 @@ export type IAssistant = Omit<Document, 'model'> & {
 
 const AssistantSchema = new Schema<IAssistant>(
   {
+    clientId:      { type: String, required: true },
     name:          { type: String, required: true },
     instructions:  { type: String, required: true },
     model:         { type: String, required: true, default: 'gpt-4o' },
@@ -21,6 +22,8 @@ const AssistantSchema = new Schema<IAssistant>(
   },
   { timestamps: true }
 );
+
+AssistantSchema.index({ clientId: 1 });
 
 export default mongoose.models.Assistant ||
   mongoose.model<IAssistant>('Assistant', AssistantSchema);

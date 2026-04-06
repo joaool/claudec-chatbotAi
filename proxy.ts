@@ -1,36 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { jwtVerify } from 'jose';
+import { verifyToken } from '@/lib/auth';
 
-const getSecret = () => new TextEncoder().encode(process.env.JWT_SECRET!);
-
-async function isValidToken(token: string): Promise<boolean> {
-  try {
-    const { payload } = await jwtVerify(token, getSecret());
-    return payload.role === 'admin';
-  } catch {
-    return false;
-  }
+function getToken(request: NextRequest, cookieName: string): string | null {
+  const cookie = request.cookies.get(cookieName)?.value;
+  if (cookie) return cookie;
+  const auth = request.headers.get('authorization');
+  return auth?.startsWith('Bearer ') ? auth.slice(7) : null;
 }
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Protect admin dashboard pages — check httpOnly cookie
+  // ── FrameLink super admin dashboard ──────────────────────────────────────
   if (pathname.startsWith('/admin/dashboard')) {
-    const token = request.cookies.get('admin_token')?.value;
-    if (!token || !(await isValidToken(token))) {
+    const token = getToken(request, 'admin_token');
+    const payload = token ? await verifyToken(token) : null;
+    if (payload?.role !== 'superadmin') {
       return NextResponse.redirect(new URL('/admin/login', request.url));
     }
   }
 
-  // Protect admin API routes — check cookie (sent automatically by browser)
+  // ── FrameLink super admin API (except auth) ───────────────────────────────
   if (pathname.startsWith('/api/admin') && !pathname.startsWith('/api/admin/auth')) {
-    const cookieToken = request.cookies.get('admin_token')?.value;
-    const authHeader = request.headers.get('authorization');
-    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    const token = cookieToken ?? bearerToken;
+    const token = getToken(request, 'admin_token');
+    const payload = token ? await verifyToken(token) : null;
+    if (payload?.role !== 'superadmin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+  }
 
-    if (!token || !(await isValidToken(token))) {
+  // ── Client dashboard pages  /c/:slug/admin/dashboard ─────────────────────
+  const clientDashMatch = pathname.match(/^\/c\/([^/]+)\/admin\/dashboard/);
+  if (clientDashMatch) {
+    const slug = clientDashMatch[1];
+    const token = getToken(request, `client_token_${slug}`);
+    const payload = token ? await verifyToken(token) : null;
+    const allowed =
+      payload?.role === 'superadmin' ||
+      (payload?.role === 'client' && payload.slug === slug);
+    if (!allowed) {
+      return NextResponse.redirect(new URL(`/c/${slug}/admin/login`, request.url));
+    }
+  }
+
+  // ── Client API routes  /c/:slug/api/* (except auth) ──────────────────────
+  const clientApiMatch = pathname.match(/^\/c\/([^/]+)\/api\/(.+)/);
+  if (clientApiMatch && clientApiMatch[2] !== 'auth' && clientApiMatch[2] !== 'config') {
+    const slug = clientApiMatch[1];
+    const token = getToken(request, `client_token_${slug}`) ?? getToken(request, 'admin_token');
+    const payload = token ? await verifyToken(token) : null;
+    const allowed =
+      payload?.role === 'superadmin' ||
+      (payload?.role === 'client' && payload.slug === slug);
+    if (!allowed) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }
@@ -39,5 +61,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/dashboard/:path*', '/api/admin/:path*'],
+  matcher: [
+    '/admin/dashboard/:path*',
+    '/api/admin/:path*',
+    '/c/:slug/admin/dashboard/:path*',
+    '/c/:slug/api/:path*',
+  ],
 };

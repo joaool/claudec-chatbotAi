@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IConversation extends Document {
+  clientId: string;
   sessionId: string;
   assistantId: string;
   question: string;
@@ -14,6 +15,7 @@ export interface IConversation extends Document {
 }
 
 const ConversationSchema = new Schema<IConversation>({
+  clientId:    { type: String, required: true },
   sessionId:   { type: String, required: true },
   assistantId: { type: String, required: true },
   question:    { type: String, required: true },
@@ -28,6 +30,7 @@ const ConversationSchema = new Schema<IConversation>({
 
 ConversationSchema.index({ question: 'text' });
 ConversationSchema.index({ timestamp: -1 });
+ConversationSchema.index({ clientId: 1, timestamp: -1 });
 ConversationSchema.index({ sessionId: 1 });
 
 export default mongoose.models.Conversation ||
