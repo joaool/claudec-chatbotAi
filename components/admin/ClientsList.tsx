@@ -1,11 +1,12 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface ClientItem {
   _id: string;
   slug: string;
   name: string;
   label: string;
+  iconDataUrl: string;
   isActive: boolean;
   createdAt: string;
 }
@@ -14,12 +15,13 @@ interface ClientFormData {
   name: string;
   slug: string;
   label: string;
+  iconDataUrl: string;
   openaiApiKey: string;
   clientPassword: string;
   isActive: boolean;
 }
 
-const emptyForm: ClientFormData = { name: '', slug: '', label: '', openaiApiKey: '', clientPassword: '', isActive: true };
+const emptyForm: ClientFormData = { name: '', slug: '', label: '', iconDataUrl: '', openaiApiKey: '', clientPassword: '', isActive: true };
 
 export default function ClientsList() {
   const [clients, setClients]     = useState<ClientItem[]>([]);
@@ -29,6 +31,7 @@ export default function ClientsList() {
   const [form, setForm]           = useState<ClientFormData>(emptyForm);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -42,9 +45,18 @@ export default function ClientsList() {
   const openCreate = () => { setEditing(null); setForm(emptyForm); setError(''); setShowForm(true); };
   const openEdit   = (c: ClientItem) => {
     setEditing(c);
-    setForm({ name: c.name, slug: c.slug, label: c.label, openaiApiKey: '', clientPassword: '', isActive: c.isActive });
+    setForm({ name: c.name, slug: c.slug, label: c.label, iconDataUrl: c.iconDataUrl || '', openaiApiKey: '', clientPassword: '', isActive: c.isActive });
     setError('');
     setShowForm(true);
+  };
+
+  const handleIcon = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 512 * 1024) { setError('Icon must be under 512 KB.'); return; }
+    const reader = new FileReader();
+    reader.onload = ev => setForm(f => ({ ...f, iconDataUrl: ev.target?.result as string }));
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,6 +113,38 @@ export default function ClientsList() {
           </div>
 
           <div>
+            <label className="block text-xs font-medium text-gray-600 mb-2">Icon</label>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                {form.iconDataUrl
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={form.iconDataUrl} alt="icon" className="w-full h-full object-contain" />
+                  : <span className="text-2xl">🤖</span>}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">Upload</button>
+                {form.iconDataUrl && (
+                  <button type="button" onClick={() => setForm(f => ({ ...f, iconDataUrl: '' }))}
+                    className="px-3 py-1.5 border border-red-200 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors">Remove</button>
+                )}
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleIcon} className="hidden" />
+            </div>
+            {/* Preview */}
+            <div className="mt-3 border border-gray-200 rounded-xl p-3 bg-gray-50">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Preview</p>
+              <div className="flex items-center gap-2">
+                {form.iconDataUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={form.iconDataUrl} alt="" className="w-6 h-6 object-contain rounded" />
+                )}
+                <span className="text-sm font-semibold text-gray-900">{form.label || form.name || 'Chatbot AI'}</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">OpenAI API Key {editing && <span className="text-gray-400">(leave blank to keep current)</span>}</label>
             <input type="password" value={form.openaiApiKey} onChange={e => setForm(f => ({ ...f, openaiApiKey: e.target.value }))}
               required={!editing}
@@ -138,15 +182,24 @@ export default function ClientsList() {
         <div className="space-y-3">
           {clients.map(c => (
             <div key={c._id} className="bg-white border border-gray-200 rounded-xl p-5 flex items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-900">{c.name}</span>
-                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-mono">{c.slug}</span>
-                  {!c.isActive && <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">Inactive</span>}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                  {c.iconDataUrl
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={c.iconDataUrl} alt="" className="w-full h-full object-contain" />
+                    : <span className="text-xl">🤖</span>}
                 </div>
-                <div className="flex gap-4 mt-1 text-xs text-gray-400">
-                  <span>Chat: <a href={`/c/${c.slug}`} target="_blank" className="text-blue-500 hover:underline">/c/{c.slug}</a></span>
-                  <span>Admin: <a href={`/c/${c.slug}/admin`} target="_blank" className="text-blue-500 hover:underline">/c/{c.slug}/admin</a></span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-gray-900">{c.name}</span>
+                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-mono">{c.slug}</span>
+                    {c.label && c.label !== c.name && <span className="text-xs text-gray-500 italic">{c.label}</span>}
+                    {!c.isActive && <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">Inactive</span>}
+                  </div>
+                  <div className="flex gap-4 mt-1 text-xs text-gray-400">
+                    <span>Chat: <a href={`/c/${c.slug}`} target="_blank" className="text-blue-500 hover:underline">/c/{c.slug}</a></span>
+                    <span>Admin: <a href={`/c/${c.slug}/admin`} target="_blank" className="text-blue-500 hover:underline">/c/{c.slug}/admin</a></span>
+                  </div>
                 </div>
               </div>
               <div className="flex gap-3 shrink-0">
