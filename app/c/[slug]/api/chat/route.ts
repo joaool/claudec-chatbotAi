@@ -59,16 +59,46 @@ export async function POST(
       return NextResponse.json({ error: 'No assistant configured.' }, { status: 404 });
     }
 
+    const assistantIdStr = assistant._id.toString();
+
+    // Find the last response ID for this session + assistant to enable stateful conversation
+    const lastConv = await Conversation.findOne(
+      { clientId, sessionId, assistantId: assistantIdStr },
+      { responseId: 1 },
+      { sort: { timestamp: -1 } }
+    );
+    const previousResponseId = lastConv?.responseId || null;
+
     const userIp = getClientIp(request);
-    const [geo, response] = await Promise.all([
-      getGeoData(userIp),
-      openai.responses.create({
+
+    let response;
+    try {
+      response = await openai.responses.create({
         model: assistant.model,
         instructions: assistant.instructions,
         input: message.trim(),
         tools: [{ type: 'file_search', vector_store_ids: [assistant.vectorStoreId] }],
-      }),
-    ]);
+        ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+      });
+    } catch (openaiErr: unknown) {
+      // If the previous_response_id is stale/expired, retry without it
+      const isExpiredContext =
+        typeof openaiErr === 'object' && openaiErr !== null &&
+        'status' in openaiErr && (openaiErr as { status: number }).status === 400;
+      if (previousResponseId && isExpiredContext) {
+        console.warn('[client chat] previous_response_id rejected, retrying without it');
+        response = await openai.responses.create({
+          model: assistant.model,
+          instructions: assistant.instructions,
+          input: message.trim(),
+          tools: [{ type: 'file_search', vector_store_ids: [assistant.vectorStoreId] }],
+        });
+      } else {
+        throw openaiErr;
+      }
+    }
+
+    const geo = await getGeoData(userIp);
 
     const answer = response.output_text;
     const sources: string[] = [];
@@ -90,11 +120,12 @@ export async function POST(
     await Conversation.create({
       clientId,
       sessionId,
-      assistantId: assistant._id.toString(),
+      assistantId: assistantIdStr,
       question: message.trim(),
       answer,
       sources,
       userIp,
+      responseId: response.id,
       ...geo,
     });
 

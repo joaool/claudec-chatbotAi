@@ -12,6 +12,7 @@ export interface IConversation extends Document {
   regionName: string;
   city: string;
   timestamp: Date;
+  responseId: string;
 }
 
 const ConversationSchema = new Schema<IConversation>({
@@ -26,6 +27,7 @@ const ConversationSchema = new Schema<IConversation>({
   regionName:  { type: String, default: '' },
   city:        { type: String, default: '' },
   timestamp:   { type: Date, default: Date.now },
+  responseId:  { type: String, default: '' },
 });
 
 ConversationSchema.index({ question: 'text' });
