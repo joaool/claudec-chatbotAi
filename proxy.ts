@@ -43,9 +43,11 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // ── Client API routes  /c/:slug/api/* (except auth) ──────────────────────
+  // ── Client API routes  /c/:slug/api/* (except public endpoints) ─────────
+  // chat and config are public — no login required to use the chatbot
   const clientApiMatch = pathname.match(/^\/c\/([^/]+)\/api\/(.+)/);
-  if (clientApiMatch && clientApiMatch[2] !== 'auth' && clientApiMatch[2] !== 'config') {
+  const publicClientRoutes = ['auth', 'config', 'chat'];
+  if (clientApiMatch && !publicClientRoutes.includes(clientApiMatch[2])) {
     const slug = clientApiMatch[1];
     const token = getToken(request, `client_token_${slug}`) ?? getToken(request, 'admin_token');
     const payload = token ? await verifyToken(token) : null;
