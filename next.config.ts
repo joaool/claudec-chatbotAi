@@ -4,13 +4,21 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/api/:path*", // Matches API routes
+        // Apply these headers to all API routes
+        source: "/api/:path*",
         headers: [
-          { key: "Access-Control-Allow-Credentials", value: "true" },
-          // Replace with your actual domain
-          { key: "Access-Control-Allow-Origin", value: "*" }, // Allow all origins for testing
-          { key: "Access-Control-Allow-Methods", value: "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
-          { key: "Access-Control-Allow-Headers", value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization" },
+          { 
+            key: "Access-Control-Allow-Origin", 
+            value: "https://www.framelink.co/" // Update this!
+          },
+          { 
+            key: "Access-Control-Allow-Methods", 
+            value: "GET,OPTIONS,POST" 
+          },
+          { 
+            key: "Access-Control-Allow-Headers", 
+            value: "Content-Type, Authorization" 
+          },
         ],
       },
     ];
