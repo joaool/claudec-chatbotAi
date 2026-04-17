@@ -13,17 +13,18 @@ const nextConfig: NextConfig = {
           },
           { 
             key: "Access-Control-Allow-Methods", 
-            value: "GET,OPTIONS,PATCH,DELETE,POST,PUT" 
+            value: "GET,OPTIONS,POST" 
           },
+          // 2. The critical "Unlock" for IFrames
+          // We must set X-Frame-Options to an empty string to stop it from blocking the frame
           { 
-            key: "Access-Control-Allow-Headers", 
-            value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" 
+            key: "X-Frame-Options", 
+            value: "" 
           },
-          // --- NEW IFRAME HEADERS ---
-          // 1. Content Security Policy (Modern way to allow framing)
+           // 3. Updated CSP (Added 'self' and framing permissions)
           { 
             key: "Content-Security-Policy", 
-            value: "frame-ancestors 'self' https://framelink.co https://*.squarespace.com" 
+            value: "frame-ancestors 'self' https://framelink.co https://*.squarespace.com https://*.squarespace-config.com;" 
           },
         ],
       },
