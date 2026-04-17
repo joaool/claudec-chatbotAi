@@ -19,6 +19,12 @@ const nextConfig: NextConfig = {
             key: "Access-Control-Allow-Headers", 
             value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" 
           },
+          // --- NEW IFRAME HEADERS ---
+          // 1. Content Security Policy (Modern way to allow framing)
+          { 
+            key: "Content-Security-Policy", 
+            value: "frame-ancestors 'self' https://framelink.co https://*.squarespace.com" 
+          },
         ],
       },
     ];
