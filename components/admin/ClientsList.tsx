@@ -7,6 +7,7 @@ interface ClientItem {
   name: string;
   label: string;
   iconDataUrl: string;
+  allowedOrigin: string;
   isActive: boolean;
   createdAt: string;
 }
@@ -16,12 +17,13 @@ interface ClientFormData {
   slug: string;
   label: string;
   iconDataUrl: string;
+  allowedOrigin: string;
   openaiApiKey: string;
   clientPassword: string;
   isActive: boolean;
 }
 
-const emptyForm: ClientFormData = { name: '', slug: '', label: '', iconDataUrl: '', openaiApiKey: '', clientPassword: '', isActive: true };
+const emptyForm: ClientFormData = { name: '', slug: '', label: '', iconDataUrl: '', allowedOrigin: '', openaiApiKey: '', clientPassword: '', isActive: true };
 
 export default function ClientsList() {
   const [clients, setClients]     = useState<ClientItem[]>([]);
@@ -45,7 +47,7 @@ export default function ClientsList() {
   const openCreate = () => { setEditing(null); setForm(emptyForm); setError(''); setShowForm(true); };
   const openEdit   = (c: ClientItem) => {
     setEditing(c);
-    setForm({ name: c.name, slug: c.slug, label: c.label, iconDataUrl: c.iconDataUrl || '', openaiApiKey: '', clientPassword: '', isActive: c.isActive });
+    setForm({ name: c.name, slug: c.slug, label: c.label, iconDataUrl: c.iconDataUrl || '', allowedOrigin: c.allowedOrigin || '', openaiApiKey: '', clientPassword: '', isActive: c.isActive });
     setError('');
     setShowForm(true);
   };
@@ -142,6 +144,20 @@ export default function ClientsList() {
                 <span className="text-sm font-semibold text-gray-900">{form.label || form.name || 'Chatbot AI'}</span>
               </div>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Allowed Embed Origin
+              <span className="ml-1 text-gray-400 font-normal">(leave blank to allow all)</span>
+            </label>
+            <input
+              value={form.allowedOrigin}
+              onChange={e => setForm(f => ({ ...f, allowedOrigin: e.target.value.trim() }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="https://www.example.com"
+            />
+            <p className="text-xs text-gray-400 mt-1">Only this origin can embed the chatbot in an iframe. Leave blank to allow embedding from any site.</p>
           </div>
 
           <div>

@@ -21,7 +21,7 @@ export async function GET() {
 // POST /api/admin/clients — create new client
 export async function POST(request: NextRequest) {
   try {
-    const { slug, name, label, iconDataUrl, openaiApiKey, clientPassword } = await request.json();
+    const { slug, name, label, iconDataUrl, allowedOrigin, openaiApiKey, clientPassword } = await request.json();
 
     if (!slug || !name || !openaiApiKey) {
       return NextResponse.json({ error: 'slug, name, and openaiApiKey are required' }, { status: 400 });
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       name,
       label: label || name,
       iconDataUrl: iconDataUrl || '',
+      allowedOrigin: allowedOrigin || '',
       clientPasswordHash,
       openaiApiKeyEncrypted,
     });
@@ -57,13 +58,13 @@ export async function POST(request: NextRequest) {
 // PUT /api/admin/clients — update client
 export async function PUT(request: NextRequest) {
   try {
-    const { id, name, label, iconDataUrl, openaiApiKey, clientPassword, isActive } = await request.json();
+    const { id, name, label, iconDataUrl, allowedOrigin, openaiApiKey, clientPassword, isActive } = await request.json();
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
     await connectDB();
 
-    const update: Record<string, unknown> = { name, label, iconDataUrl, isActive };
+    const update: Record<string, unknown> = { name, label, iconDataUrl, allowedOrigin, isActive };
     if (openaiApiKey) update.openaiApiKeyEncrypted = encrypt(openaiApiKey);
     if (clientPassword) update.clientPasswordHash = await bcrypt.hash(clientPassword, 10);
 

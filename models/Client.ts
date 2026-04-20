@@ -7,6 +7,7 @@ export interface IClient extends Document {
   iconDataUrl: string;
   clientPasswordHash: string;
   openaiApiKeyEncrypted: string;
+  allowedOrigin: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -20,6 +21,7 @@ const ClientSchema = new Schema<IClient>(
     iconDataUrl:          { type: String, default: '' },
     clientPasswordHash:   { type: String, default: '' },
     openaiApiKeyEncrypted:{ type: String, default: '' },
+    allowedOrigin:        { type: String, default: '' }, // e.g. https://www.example.com
     isActive:             { type: Boolean, default: true },
   },
   { timestamps: true }
