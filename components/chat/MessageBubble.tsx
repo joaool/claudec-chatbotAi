@@ -7,10 +7,11 @@ interface Message {
 }
 
 // Converts CHECK "label" https://url  →  [label](https://url)
+// Handles URLs that may contain spaces (e.g. "https:// www.example.com" on mobile)
 function processCheckLinks(text: string): string {
   return text.replace(
-    /CHECK\s+"([^"]+)"\s+(https?:\/\/\S+)/g,
-    '[$1]($2)'
+    /CHECK\s+"([^"]+)"\s+(https?:\/\/[^\n"]+)/g,
+    (_, label, rawUrl) => `[${label}](${rawUrl.replace(/\s+/g, '').trim()})`
   );
 }
 
