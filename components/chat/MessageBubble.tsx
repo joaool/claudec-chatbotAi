@@ -7,11 +7,15 @@ interface Message {
 }
 
 // Converts CHECK "label" https://url  →  [label](https://url)
-// Handles straight quotes ("), curly quotes (\u201c\u201d), spaces in URLs, and line breaks
+// Normalizes curly/smart quotes to straight quotes first, then matches
+// the label+URL whether they are on the same line or split across lines.
 function processCheckLinks(text: string): string {
-  return text.replace(
-    /CHECK\s+[\u201c"]([^\u201d"]+)[\u201d"]\s+(https?:\/\/[^\n\u201c"]+)/g,
-    (_, label, rawUrl) => `[${label}](${rawUrl.replace(/\s+/g, '').trim()})`
+  const normalized = text
+    .replace(/[\u201c\u201e\u00ab]/g, '"')
+    .replace(/[\u201d\u00bb]/g, '"');
+  return normalized.replace(
+    /CHECK\s+"([^"\n]+)"\s*[\n\r\s]*(https?:\/\/[^\s\n]+)/g,
+    (_, label, rawUrl) => `[${label.trim()}](${rawUrl.replace(/\s+/g, '').trim()})`
   );
 }
 
