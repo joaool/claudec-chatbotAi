@@ -6,6 +6,14 @@ interface Message {
   sources?: string[];
 }
 
+// Converts CHECK "label" https://url  →  [label](https://url)
+function processCheckLinks(text: string): string {
+  return text.replace(
+    /CHECK\s+"([^"]+)"\s+(https?:\/\/\S+)/g,
+    '[$1]($2)'
+  );
+}
+
 export default function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
 
@@ -35,9 +43,15 @@ export default function MessageBubble({ message }: { message: Message }) {
                 h3:     ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-2">{children}</h3>,
                 code:   ({ children }) => <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">{children}</code>,
                 pre:    ({ children }) => <pre className="bg-black/10 rounded p-2 text-xs font-mono overflow-x-auto mb-2">{children}</pre>,
+                a:      ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer"
+                    className="text-blue-600 underline hover:text-blue-800">
+                    {children}
+                  </a>
+                ),
               }}
             >
-              {message.content}
+              {processCheckLinks(message.content)}
             </ReactMarkdown>
           )}
         </div>
