@@ -24,7 +24,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <div className="flex gap-2 items-end p-4 border-t border-gray-200 bg-white">
+    <div className="flex gap-2 items-end p-4 pb-8 border-t border-gray-200 bg-white">
       <textarea
         value={input}
         onChange={(e) => {
