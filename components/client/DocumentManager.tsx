@@ -122,7 +122,7 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
                 <tr key={file.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">{file.filename}</td>
                   <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
-                    {file.createdAt ? new Date(file.createdAt * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                    {file.createdAt ? new Date(file.createdAt * 1000).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{formatSize(file.size)}</td>
                   <td className="px-4 py-3">
