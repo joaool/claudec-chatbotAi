@@ -7,10 +7,10 @@ interface Message {
 }
 
 // Converts CHECK "label" https://url  →  [label](https://url)
-// Handles URLs that may contain spaces (e.g. "https:// www.example.com" on mobile)
+// Handles straight quotes ("), curly quotes (\u201c\u201d), spaces in URLs, and line breaks
 function processCheckLinks(text: string): string {
   return text.replace(
-    /CHECK\s+"([^"]+)"\s+(https?:\/\/[^\n"]+)/g,
+    /CHECK\s+[\u201c"]([^\u201d"]+)[\u201d"]\s+(https?:\/\/[^\n\u201c"]+)/g,
     (_, label, rawUrl) => `[${label}](${rawUrl.replace(/\s+/g, '').trim()})`
   );
 }
