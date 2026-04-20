@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-interface FileItem { id: string; filename: string; size: number; status: string; }
+interface FileItem { id: string; filename: string; size: number; status: string; createdAt: number; }
 interface AssistantOption { _id: string; name: string; isDefault: boolean; }
 
 function formatSize(bytes: number) {
@@ -111,6 +111,7 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-gray-700">File Name</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Date Modified</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-700">Size</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-700">Status</th>
                 <th className="px-4 py-3" />
@@ -120,6 +121,9 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
               {files.map(file => (
                 <tr key={file.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">{file.filename}</td>
+                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
+                    {file.createdAt ? new Date(file.createdAt * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                  </td>
                   <td className="px-4 py-3 text-gray-500">{formatSize(file.size)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${file.status === 'completed' ? 'bg-green-50 text-green-700' : file.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'}`}>
