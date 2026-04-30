@@ -42,20 +42,78 @@ export default function ClientChatPage({ slug }: { slug: string }) {
     if (!sessionId) return;
     setMessages(prev => [...prev, { role: 'user', content: message }]);
     setIsLoading(true);
+
+    // Add empty assistant message immediately — will be filled by stream
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+
     try {
       const res = await fetch(`/c/${slug}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, sessionId }),
       });
-      const data = await res.json();
-      setMessages(prev => [...prev, res.ok
-        ? { role: 'assistant', content: data.answer, sources: data.sources }
-        : { role: 'assistant', content: data.error ?? 'Something went wrong.' }
-      ]);
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setMessages(prev => {
+          const msgs = [...prev];
+          msgs[msgs.length - 1] = { role: 'assistant', content: data.error ?? 'Something went wrong.' };
+          return msgs;
+        });
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process all complete lines
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? ''; // keep incomplete last line
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            if (event.t === 'delta') {
+              setMessages(prev => {
+                const msgs = [...prev];
+                msgs[msgs.length - 1] = {
+                  ...msgs[msgs.length - 1],
+                  content: msgs[msgs.length - 1].content + event.v,
+                };
+                return msgs;
+              });
+            } else if (event.t === 'done') {
+              setMessages(prev => {
+                const msgs = [...prev];
+                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], sources: event.sources ?? [] };
+                return msgs;
+              });
+            } else if (event.t === 'error') {
+              setMessages(prev => {
+                const msgs = [...prev];
+                msgs[msgs.length - 1] = { role: 'assistant', content: event.v ?? 'Something went wrong.' };
+                return msgs;
+              });
+            }
+          } catch { /* malformed line — skip */ }
+        }
+      }
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Network error. Please try again.' }]);
-    } finally { setIsLoading(false); }
+      setMessages(prev => {
+        const msgs = [...prev];
+        msgs[msgs.length - 1] = { role: 'assistant', content: 'Network error. Please try again.' };
+        return msgs;
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

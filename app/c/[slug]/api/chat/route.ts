@@ -67,107 +67,146 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  const { slug } = await params;
+  const { message, sessionId, assistantId } = await request.json();
+
+  if (!message?.trim() || !sessionId) {
+    return NextResponse.json({ error: 'message and sessionId are required' }, { status: 400 });
+  }
+
+  await connectDB();
+
+  const db = mongoose.connection.db!;
+  const client = await db.collection('clients').findOne({ slug, isActive: true });
+  if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+
+  const apiKey = decrypt(client.openaiApiKeyEncrypted as string ?? '');
+  if (!apiKey) return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 });
+
+  const openai = new OpenAI({ apiKey });
+  const clientId = client._id.toString();
+
+  const assistant = assistantId
+    ? await Assistant.findOne({ _id: assistantId, clientId })
+    : await Assistant.findOne({ clientId, isDefault: true });
+
+  if (!assistant) {
+    return NextResponse.json({ error: 'No assistant configured.' }, { status: 404 });
+  }
+
+  const assistantIdStr = assistant._id.toString();
+
+  const lastConv = await Conversation.findOne(
+    { clientId, sessionId, assistantId: assistantIdStr },
+    { responseId: 1 },
+    { sort: { timestamp: -1 } }
+  );
+  const previousResponseId = lastConv?.responseId || null;
+  const userIp = getClientIp(request);
+  const geoPromise = getGeoData(userIp);
+
+  const callParams = {
+    model: assistant.model as string,
+    instructions: assistant.instructions as string,
+    input: message.trim(),
+    tools: [{ type: 'file_search' as const, vector_store_ids: [assistant.vectorStoreId as string] }],
+    stream: true as const,
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let oaiStream: any;
   try {
-    const { slug } = await params;
-    const { message, sessionId, assistantId } = await request.json();
-
-    if (!message?.trim() || !sessionId) {
-      return NextResponse.json({ error: 'message and sessionId are required' }, { status: 400 });
-    }
-
-    await connectDB();
-
-    const db = mongoose.connection.db!;
-    const client = await db.collection('clients').findOne({ slug, isActive: true });
-    if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-
-    const apiKey = decrypt(client.openaiApiKeyEncrypted as string ?? '');
-    if (!apiKey) return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 });
-
-    const openai = new OpenAI({ apiKey });
-    const clientId = client._id.toString();
-
-    const assistant = assistantId
-      ? await Assistant.findOne({ _id: assistantId, clientId })
-      : await Assistant.findOne({ clientId, isDefault: true });
-
-    if (!assistant) {
-      return NextResponse.json({ error: 'No assistant configured.' }, { status: 404 });
-    }
-
-    const assistantIdStr = assistant._id.toString();
-
-    // Find the last response ID for this session + assistant to enable stateful conversation
-    const lastConv = await Conversation.findOne(
-      { clientId, sessionId, assistantId: assistantIdStr },
-      { responseId: 1 },
-      { sort: { timestamp: -1 } }
+    oaiStream = await openai.responses.create(
+      previousResponseId ? { ...callParams, previous_response_id: previousResponseId } : callParams
     );
-    const previousResponseId = lastConv?.responseId || null;
-
-    const userIp = getClientIp(request);
-
-    let response;
-    try {
-      response = await openai.responses.create({
-        model: assistant.model,
-        instructions: assistant.instructions,
-        input: message.trim(),
-        tools: [{ type: 'file_search', vector_store_ids: [assistant.vectorStoreId] }],
-        ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-      });
-    } catch (openaiErr: unknown) {
-      // If the previous_response_id is stale/expired, retry without it
-      const isExpiredContext =
-        typeof openaiErr === 'object' && openaiErr !== null &&
-        'status' in openaiErr && (openaiErr as { status: number }).status === 400;
-      if (previousResponseId && isExpiredContext) {
-        console.warn('[client chat] previous_response_id rejected, retrying without it');
-        response = await openai.responses.create({
-          model: assistant.model,
-          instructions: assistant.instructions,
-          input: message.trim(),
-          tools: [{ type: 'file_search', vector_store_ids: [assistant.vectorStoreId] }],
-        });
-      } else {
-        throw openaiErr;
-      }
+  } catch (openaiErr: unknown) {
+    const isExpired =
+      typeof openaiErr === 'object' && openaiErr !== null &&
+      'status' in openaiErr && (openaiErr as { status: number }).status === 400;
+    if (previousResponseId && isExpired) {
+      console.warn('[client chat] previous_response_id rejected, retrying without it');
+      oaiStream = await openai.responses.create(callParams);
+    } else {
+      console.error('[client chat POST]', openaiErr);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
+  }
 
-    const geo = await getGeoData(userIp);
+  const encoder = new TextEncoder();
 
-    const answer = response.output_text;
-    const sources: string[] = [];
-    for (const item of response.output) {
-      if (item.type === 'message') {
-        for (const block of item.content) {
-          if (block.type === 'output_text') {
-            for (const annotation of block.annotations) {
-              if (annotation.type === 'file_citation') {
-                const name = (annotation as { filename?: string }).filename ?? annotation.file_id;
-                if (name && !sources.includes(name)) sources.push(name);
+  const readable = new ReadableStream({
+    async start(controller) {
+      const send = (obj: object) =>
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
+
+      try {
+        let fullAnswer = '';
+        let responseId = '';
+
+        for await (const event of oaiStream) {
+          if (event.type === 'response.output_text.delta') {
+            fullAnswer += event.delta;
+            send({ t: 'delta', v: event.delta });
+          } else if (event.type === 'response.completed') {
+            responseId = event.response?.id ?? '';
+          }
+        }
+
+        // Extract sources from completed response
+        const sources: string[] = [];
+        for await (const event of []) { void event; } // drain (already consumed above)
+        // Re-iterate completed output via accumulated stream if available
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const finalResp = (oaiStream as any).finalResponse?.() ?? null;
+          if (finalResp) {
+            const output = (await finalResp)?.output ?? [];
+            for (const item of output) {
+              if (item.type === 'message') {
+                for (const block of item.content ?? []) {
+                  if (block.type === 'output_text') {
+                    for (const ann of block.annotations ?? []) {
+                      if (ann.type === 'file_citation') {
+                        const name = (ann as { filename?: string }).filename ?? ann.file_id;
+                        if (name && !sources.includes(name)) sources.push(name);
+                      }
+                    }
+                  }
+                }
               }
             }
           }
-        }
+        } catch { /* sources unavailable */ }
+
+        send({ t: 'done', sources });
+
+        // Save to DB after stream completes
+        const geo = await geoPromise;
+        await Conversation.create({
+          clientId,
+          sessionId,
+          assistantId: assistantIdStr,
+          question: message.trim(),
+          answer: fullAnswer,
+          sources,
+          userIp,
+          responseId,
+          ...geo,
+        });
+      } catch (err) {
+        console.error('[client chat stream]', err);
+        send({ t: 'error', v: 'Something went wrong.' });
+      } finally {
+        controller.close();
       }
-    }
+    },
+  });
 
-    await Conversation.create({
-      clientId,
-      sessionId,
-      assistantId: assistantIdStr,
-      question: message.trim(),
-      answer,
-      sources,
-      userIp,
-      responseId: response.id,
-      ...geo,
-    });
-
-    return NextResponse.json({ answer, sources });
-  } catch (error) {
-    console.error('[client chat]', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }
