@@ -27,6 +27,42 @@ async function getGeoData(ip: string) {
   } catch { return empty; }
 }
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
+) {
+  try {
+    const { slug } = await params;
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('sessionId');
+    if (!sessionId) return NextResponse.json({ messages: [] });
+
+    await connectDB();
+
+    const db = mongoose.connection.db!;
+    const client = await db.collection('clients').findOne({ slug, isActive: true });
+    if (!client) return NextResponse.json({ messages: [] });
+
+    const conversations = await Conversation.find(
+      { clientId: client._id.toString(), sessionId },
+      { question: 1, answer: 1, sources: 1, timestamp: 1 }
+    )
+      .sort({ timestamp: 1 })
+      .limit(50)
+      .lean();
+
+    const messages = conversations.flatMap(c => [
+      { role: 'user',      content: c.question },
+      { role: 'assistant', content: c.answer, sources: c.sources ?? [] },
+    ]);
+
+    return NextResponse.json({ messages });
+  } catch (error) {
+    console.error('[client chat GET]', error);
+    return NextResponse.json({ messages: [] });
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }

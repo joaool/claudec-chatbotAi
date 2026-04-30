@@ -10,6 +10,7 @@ interface Brand { label: string; iconDataUrl: string; }
 export default function ClientChatPage({ slug }: { slug: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [brand, setBrand] = useState<Brand>({ label: 'Chatbot AI', iconDataUrl: '' });
 
@@ -19,6 +20,16 @@ export default function ClientChatPage({ slug }: { slug: string }) {
     if (!id) { id = uuidv4(); localStorage.setItem(key, id); }
     setSessionId(id);
   }, [slug]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    setHistoryLoading(true);
+    fetch(`/c/${slug}/api/chat?sessionId=${sessionId}`)
+      .then(r => r.json())
+      .then(d => { if (d.messages?.length) setMessages(d.messages); })
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+  }, [sessionId, slug]);
 
   useEffect(() => {
     fetch(`/c/${slug}/api/config`)
@@ -57,7 +68,7 @@ export default function ClientChatPage({ slug }: { slug: string }) {
         <h1 className="text-lg font-semibold text-gray-900">{brand.label}</h1>
       </header>
 
-      <ChatWindow messages={messages} isLoading={isLoading} />
+      <ChatWindow messages={messages} isLoading={isLoading || historyLoading} />
 
       <div className="flex justify-center py-2 border-t border-gray-100">
         <a href="https://www.framelink.co" target="_blank" rel="noopener noreferrer">
@@ -67,7 +78,7 @@ export default function ClientChatPage({ slug }: { slug: string }) {
         </a>
       </div>
 
-      <ChatInput onSend={handleSend} disabled={isLoading || !sessionId} />
+      <ChatInput onSend={handleSend} disabled={isLoading || historyLoading || !sessionId} />
     </div>
   );
 }
