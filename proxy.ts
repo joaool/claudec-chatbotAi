@@ -33,7 +33,7 @@ export async function proxy(request: NextRequest) {
   const clientDashMatch = pathname.match(/^\/c\/([^/]+)\/admin\/dashboard/);
   if (clientDashMatch) {
     const slug = clientDashMatch[1];
-    const token = getToken(request, `client_token_${slug}`);
+    const token = getToken(request, `client_token_${slug}`) ?? getToken(request, 'admin_token');
     const payload = token ? await verifyToken(token) : null;
     const allowed =
       payload?.role === 'superadmin' ||
