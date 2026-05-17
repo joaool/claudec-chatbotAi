@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
-import { signClientToken } from '@/lib/auth';
+import { signClientToken, signSuperAdminToken } from '@/lib/auth';
 
 export async function POST(
   request: NextRequest,
@@ -14,6 +14,20 @@ export async function POST(
 
     if (!password) {
       return NextResponse.json({ error: 'Password is required' }, { status: 400 });
+    }
+
+    // Super admin password grants access to any client dashboard
+    if (password === process.env.ADMIN_PASSWORD) {
+      const token = await signSuperAdminToken();
+      const response = NextResponse.json({ success: true });
+      response.cookies.set('admin_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24,
+        path: '/',
+      });
+      return response;
     }
 
     await connectDB();
