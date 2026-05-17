@@ -1,11 +1,20 @@
 'use client';
 import { usePathname, useRouter, useParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function ClientDashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router   = useRouter();
   const { slug } = useParams<{ slug: string }>();
+  const [iconDataUrl, setIconDataUrl] = useState('');
+
+  useEffect(() => {
+    fetch(`/c/${slug}/api/config`)
+      .then(r => r.json())
+      .then(d => { if (d.iconDataUrl) setIconDataUrl(d.iconDataUrl); })
+      .catch(() => {});
+  }, [slug]);
 
   const NAV = [
     { href: `/c/${slug}/admin/dashboard`,            label: 'Overview',   icon: '▤'  },
@@ -23,9 +32,19 @@ export default function ClientDashboardLayout({ children }: { children: React.Re
   return (
     <div className="flex h-screen bg-gray-50">
       <aside className="w-56 shrink-0 bg-white border-r border-gray-200 flex flex-col">
-        <div className="px-5 py-5 border-b border-gray-100">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Admin Panel</p>
-          <p className="text-xs text-gray-400 mt-0.5 font-mono">{slug}</p>
+        <div className="px-4 py-4 border-b border-gray-100 flex items-center gap-3">
+          {iconDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={iconDataUrl} alt="logo" className="w-9 h-9 rounded-xl object-contain shrink-0" />
+          ) : (
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+              <span className="text-white text-xs font-bold">FL</span>
+            </div>
+          )}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Admin Panel</p>
+            <p className="text-xs text-gray-400 mt-0.5 font-mono">{slug}</p>
+          </div>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           {NAV.map(item => {
