@@ -92,7 +92,11 @@ export default function ClientChatPage({ slug }: { slug: string }) {
             } else if (event.t === 'done') {
               setMessages(prev => {
                 const msgs = [...prev];
-                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], sources: event.sources ?? [] };
+                msgs[msgs.length - 1] = {
+                  ...msgs[msgs.length - 1],
+                  content: event.answer ?? msgs[msgs.length - 1].content,
+                  sources: event.sources ?? [],
+                };
                 return msgs;
               });
             } else if (event.t === 'error') {

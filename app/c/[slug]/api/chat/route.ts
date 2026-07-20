@@ -5,6 +5,7 @@ import { connectDB } from '@/lib/mongodb';
 import { decrypt } from '@/lib/crypto';
 import Conversation from '@/models/Conversation';
 import Assistant from '@/models/Assistant';
+import { linkifyKeywords } from '@/lib/linkify';
 
 function getClientIp(request: NextRequest): string {
   return (
@@ -178,7 +179,8 @@ export async function POST(
           }
         } catch { /* sources unavailable */ }
 
-        send({ t: 'done', sources });
+        const linkedAnswer = linkifyKeywords(fullAnswer, assistant.keywordLinks);
+        send({ t: 'done', sources, answer: linkedAnswer });
 
         // Save to DB after stream completes
         const geo = await geoPromise;
@@ -187,7 +189,7 @@ export async function POST(
           sessionId,
           assistantId: assistantIdStr,
           question: message.trim(),
-          answer: fullAnswer,
+          answer: linkedAnswer,
           sources,
           userIp,
           responseId,

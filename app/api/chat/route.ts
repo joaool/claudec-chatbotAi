@@ -3,6 +3,7 @@ import { openai } from '@/lib/openai';
 import { connectDB } from '@/lib/mongodb';
 import Conversation from '@/models/Conversation';
 import Assistant from '@/models/Assistant';
+import { linkifyKeywords } from '@/lib/linkify';
 
 function getClientIp(request: NextRequest): string {
   return (
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
       ],
     });
 
-    const answer = response.output_text;
+    const answer = linkifyKeywords(response.output_text, assistant.keywordLinks);
 
     // Extract cited filenames from annotations
     const sources: string[] = [];
