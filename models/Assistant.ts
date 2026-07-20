@@ -7,6 +7,7 @@ export type IAssistant = Omit<Document, 'model'> & {
   model: string;
   vectorStoreId: string;
   isDefault: boolean;
+  keywordLinks: { keyword: string; url: string }[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -19,6 +20,13 @@ const AssistantSchema = new Schema<IAssistant>(
     model:         { type: String, required: true, default: 'gpt-4o' },
     vectorStoreId: { type: String, required: true },
     isDefault:     { type: Boolean, default: false },
+    keywordLinks: {
+      type: [new Schema({
+        keyword: { type: String, required: true },
+        url:     { type: String, required: true },
+      }, { _id: false })],
+      default: [],
+    },
   },
   { timestamps: true }
 );

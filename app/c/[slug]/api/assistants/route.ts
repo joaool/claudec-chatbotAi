@@ -5,6 +5,16 @@ import { connectDB } from '@/lib/mongodb';
 import { decrypt } from '@/lib/crypto';
 import Assistant from '@/models/Assistant';
 
+function sanitizeKeywordLinks(input: unknown): { keyword: string; url: string }[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((entry) => ({
+      keyword: typeof entry?.keyword === 'string' ? entry.keyword.trim() : '',
+      url: typeof entry?.url === 'string' ? entry.url.trim() : '',
+    }))
+    .filter((entry) => entry.keyword && entry.url);
+}
+
 async function getOpenAI(slug: string) {
   const db = mongoose.connection.db!;
   const client = await db.collection('clients').findOne({ slug, isActive: true });
@@ -49,7 +59,7 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
-    const { name, instructions, model, makeDefault } = await request.json();
+    const { name, instructions, model, makeDefault, keywordLinks } = await request.json();
     if (!name || !instructions || !model) {
       return NextResponse.json({ error: 'name, instructions, and model are required' }, { status: 400 });
     }
@@ -72,6 +82,7 @@ export async function POST(
       name, instructions, model,
       vectorStoreId: vectorStore.id,
       isDefault: makeDefault ?? false,
+      keywordLinks: sanitizeKeywordLinks(keywordLinks),
     });
     return NextResponse.json({ assistant }, { status: 201 });
   } catch (error) {
@@ -86,7 +97,7 @@ export async function PUT(
 ) {
   try {
     const { slug } = await params;
-    const { id, name, instructions, model, isDefault } = await request.json();
+    const { id, name, instructions, model, isDefault, keywordLinks } = await request.json();
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
     await connectDB();
@@ -97,7 +108,7 @@ export async function PUT(
 
     const assistant = await Assistant.findOneAndUpdate(
       { _id: id, clientId: ctx.clientId },
-      { name, instructions, model, isDefault },
+      { name, instructions, model, isDefault, keywordLinks: sanitizeKeywordLinks(keywordLinks) },
       { new: true }
     );
     if (!assistant) return NextResponse.json({ error: 'Assistant not found' }, { status: 404 });
