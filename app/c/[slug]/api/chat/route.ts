@@ -7,6 +7,15 @@ import Conversation from '@/models/Conversation';
 import Assistant from '@/models/Assistant';
 import { linkifyKeywords } from '@/lib/linkify';
 
+const RATE_LIMIT_MESSAGE = "We're getting a lot of requests right now — please try again in a few seconds.";
+
+function isRateLimitError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const code = (err as { code?: string }).code;
+  const status = (err as { status?: number }).status;
+  return code === 'rate_limit_exceeded' || status === 429;
+}
+
 function getClientIp(request: NextRequest): string {
   return (
     request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
@@ -129,6 +138,9 @@ export async function POST(
       oaiStream = await openai.responses.create(callParams);
     } else {
       console.error('[client chat POST]', openaiErr);
+      if (isRateLimitError(openaiErr)) {
+        return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
+      }
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
   }
@@ -197,7 +209,7 @@ export async function POST(
         });
       } catch (err) {
         console.error('[client chat stream]', err);
-        send({ t: 'error', v: 'Something went wrong.' });
+        send({ t: 'error', v: isRateLimitError(err) ? RATE_LIMIT_MESSAGE : 'Something went wrong.' });
       } finally {
         controller.close();
       }
