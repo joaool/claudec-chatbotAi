@@ -8,12 +8,18 @@ import Assistant from '@/models/Assistant';
 import { linkifyKeywords } from '@/lib/linkify';
 
 const RATE_LIMIT_MESSAGE = "We're getting a lot of requests right now — please try again in a few seconds.";
+const CONTEXT_LIMIT_MESSAGE = 'Sorry... please resend your question.';
 
 function isRateLimitError(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const code = (err as { code?: string }).code;
   const status = (err as { status?: number }).status;
   return code === 'rate_limit_exceeded' || status === 429;
+}
+
+function isContextLengthError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  return (err as { code?: string }).code === 'context_length_exceeded';
 }
 
 function getClientIp(request: NextRequest): string {
@@ -138,6 +144,20 @@ export async function POST(
       oaiStream = await openai.responses.create(callParams);
     } else {
       console.error('[client chat POST]', openaiErr);
+      if (isContextLengthError(openaiErr)) {
+        // responseId '' breaks the previous_response_id chain so the next turn starts fresh
+        const geo = await geoPromise;
+        await Conversation.create({
+          clientId, sessionId, assistantId: assistantIdStr,
+          question: message.trim(),
+          answer: CONTEXT_LIMIT_MESSAGE,
+          sources: [],
+          userIp,
+          responseId: '',
+          ...geo,
+        });
+        return NextResponse.json({ error: CONTEXT_LIMIT_MESSAGE }, { status: 400 });
+      }
       if (isRateLimitError(openaiErr)) {
         return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
       }
@@ -209,7 +229,22 @@ export async function POST(
         });
       } catch (err) {
         console.error('[client chat stream]', err);
-        send({ t: 'error', v: isRateLimitError(err) ? RATE_LIMIT_MESSAGE : 'Something went wrong.' });
+        if (isContextLengthError(err)) {
+          send({ t: 'error', v: CONTEXT_LIMIT_MESSAGE });
+          // responseId '' breaks the previous_response_id chain so the next turn starts fresh
+          const geo = await geoPromise;
+          await Conversation.create({
+            clientId, sessionId, assistantId: assistantIdStr,
+            question: message.trim(),
+            answer: CONTEXT_LIMIT_MESSAGE,
+            sources: [],
+            userIp,
+            responseId: '',
+            ...geo,
+          });
+        } else {
+          send({ t: 'error', v: isRateLimitError(err) ? RATE_LIMIT_MESSAGE : 'Something went wrong.' });
+        }
       } finally {
         controller.close();
       }
