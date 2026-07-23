@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-interface FileItem { id: string; filename: string; size: number; status: string; createdAt: number; pending?: boolean; }
+interface FileItem { id: string; filename: string; size: number; status: string; createdAt: number; }
 interface AssistantOption { _id: string; name: string; isDefault: boolean; }
 
 function formatSize(bytes: number) {
@@ -36,23 +36,18 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
     fetch(`${base}/documents?assistantId=${aId}`).then(r => r.json()).then(d => {
       const fresh = (d.files ?? []) as FileItem[];
       const visible = fresh.filter(f => !deletedIds.current.has(f.id));
-      // Keep any optimistic "pending" rows the server listing hasn't caught up to yet
-      setFiles(prev => {
-        const stillPending = prev.filter(f => f.pending && !visible.some(v => v.id === f.id));
-        return [...stillPending, ...visible];
-      });
-      return visible;
+      setFiles(visible); return visible;
     }), [base]);
 
   useEffect(() => {
     if (!selectedId) return;
-    deletedIds.current.clear(); setFiles([]); setLoading(true);
+    deletedIds.current.clear(); setLoading(true);
     fetchFiles(selectedId).finally(() => setLoading(false));
   }, [selectedId, fetchFiles]);
 
   useEffect(() => {
     if (!selectedId) return;
-    if (!files.some(f => f.status === 'in_progress' || f.pending)) return;
+    if (!files.some(f => f.status === 'in_progress')) return;
     const t = setTimeout(() => fetchFiles(selectedId), 3000);
     return () => clearTimeout(t);
   }, [files, selectedId, fetchFiles]);
@@ -65,16 +60,8 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
     const fd = new FormData(); fd.append('file', file); fd.append('assistantId', selectedId);
     try {
       const res = await fetch(`${base}/documents`, { method: 'POST', body: fd });
-      if (res.ok) {
-        const d = await res.json();
-        // Show the new file immediately — the vector store listing can lag a
-        // moment behind the upload, so don't wait on it to reflect the file.
-        setFiles(prev => [
-          { id: d.file.id, filename: d.file.filename, size: file.size, status: 'in_progress', createdAt: Math.floor(Date.now() / 1000), pending: true },
-          ...prev,
-        ]);
-        await fetchFiles(selectedId);
-      } else { const d = await res.json(); setError(d.error ?? 'Upload failed'); }
+      if (res.ok) await fetchFiles(selectedId);
+      else { const d = await res.json(); setError(d.error ?? 'Upload failed'); }
     } catch (err) { setError(err instanceof Error ? err.message : 'Error'); }
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
