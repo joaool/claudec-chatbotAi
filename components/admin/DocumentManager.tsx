@@ -7,6 +7,7 @@ interface FileItem {
   size: number;
   createdAt: number;
   status: string;
+  pending?: boolean;
 }
 
 interface AssistantOption {
@@ -55,7 +56,11 @@ export default function DocumentManager() {
         // Filter out any IDs the user has already deleted
         const fresh = (data.files ?? []) as FileItem[];
         const visible = fresh.filter((f) => !deletedIds.current.has(f.id));
-        setFiles(visible);
+        // Keep any optimistic "pending" rows the server listing hasn't caught up to yet
+        setFiles((prev) => {
+          const stillPending = prev.filter((f) => f.pending && !visible.some((v) => v.id === f.id));
+          return [...stillPending, ...visible];
+        });
         return visible;
       });
   }, []);
@@ -64,6 +69,7 @@ export default function DocumentManager() {
   useEffect(() => {
     if (!selectedId) return;
     deletedIds.current.clear();
+    setFiles([]);
     setLoading(true);
     fetchFiles(selectedId).finally(() => setLoading(false));
   }, [selectedId, fetchFiles]);
@@ -71,7 +77,7 @@ export default function DocumentManager() {
   // Poll every 3 s while any file is still in_progress
   useEffect(() => {
     if (!selectedId) return;
-    const hasPending = files.some((f) => f.status === 'in_progress');
+    const hasPending = files.some((f) => f.status === 'in_progress' || f.pending);
     if (!hasPending) return;
     const timer = setTimeout(() => fetchFiles(selectedId), 3000);
     return () => clearTimeout(timer);
@@ -95,6 +101,13 @@ export default function DocumentManager() {
     try {
       const res = await fetch('/api/admin/documents', { method: 'POST', body: formData });
       if (res.ok) {
+        const data = await res.json();
+        // Show the new file immediately — the vector store listing can lag a
+        // moment behind the upload, so don't wait on it to reflect the file.
+        setFiles((prev) => [
+          { id: data.file.id, filename: data.file.filename, size: file.size, status: 'in_progress', createdAt: Math.floor(Date.now() / 1000), pending: true },
+          ...prev,
+        ]);
         await fetchFiles(selectedId);
       } else {
         const data = await res.json();
