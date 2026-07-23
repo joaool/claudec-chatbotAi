@@ -15,10 +15,9 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
   const [files, setFiles]           = useState<FileItem[]>([]);
   const [assistants, setAssistants] = useState<AssistantOption[]>([]);
   const [selectedId, setSelectedId] = useState('');
-  const [uploading, setUploading]   = useState<string | null>(null);
+  const [uploading, setUploading]   = useState(false);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
-  const [retryFile, setRetryFile]   = useState<File | null>(null);
   const [deleting, setDeleting]     = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deletedIds   = useRef<Set<string>>(new Set());
@@ -58,9 +57,11 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
     return () => clearTimeout(t);
   }, [files, selectedId, fetchFiles]);
 
-  const uploadFile = async (file: File) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
     if (!selectedId) { setError('Create an assistant first.'); return; }
-    setUploading(file.name); setError(''); setRetryFile(null);
+    setUploading(true); setError('');
     const fd = new FormData(); fd.append('file', file); fd.append('assistantId', selectedId);
     try {
       const res = await fetch(`${base}/documents`, { method: 'POST', body: fd });
@@ -73,25 +74,10 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
           ...prev,
         ]);
         await fetchFiles(selectedId);
-      } else {
-        const d = await res.json();
-        setError(d.error ?? 'Upload failed');
-        setRetryFile(file);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
-      setRetryFile(file);
-    } finally { setUploading(null); }
+      } else { const d = await res.json(); setError(d.error ?? 'Upload failed'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Error'); }
+    finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
-
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    uploadFile(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleRetry = () => { if (retryFile) uploadFile(retryFile); };
 
   const handleDelete = async (fileId: string) => {
     if (!confirm('Remove this document?')) return;
@@ -122,18 +108,13 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
       <div className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center hover:border-blue-400 transition-colors cursor-pointer"
         onClick={() => fileInputRef.current?.click()}>
         <input ref={fileInputRef} type="file" onChange={handleUpload} className="hidden" accept=".pdf,.txt,.md,.docx,.csv" />
-        {uploading ? <p className="text-sm text-gray-500 animate-pulse">Uploading: {uploading}</p> : (
+        {uploading ? <p className="text-sm text-gray-500 animate-pulse">Uploading…</p> : (
           <><p className="text-sm font-medium text-gray-700">Click to upload a document</p>
           <p className="text-xs text-gray-400 mt-1">PDF, TXT, MD, DOCX, CSV</p></>
         )}
       </div>
 
-      {error && (
-        <div className="flex items-center justify-between gap-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-          <span>{error}</span>
-          {retryFile && <button onClick={handleRetry} className="font-medium text-red-700 hover:text-red-900 shrink-0">Try Again</button>}
-        </div>
-      )}
+      {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
       {loading ? <p className="text-sm text-gray-400">Loading…</p>
       : files.length === 0 ? <p className="text-sm text-gray-400 text-center py-8">No documents yet.</p>

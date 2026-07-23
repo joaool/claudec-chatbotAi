@@ -4,14 +4,6 @@ import { openai } from '@/lib/openai';
 import { connectDB } from '@/lib/mongodb';
 import Assistant from '@/models/Assistant';
 
-const UPLOAD_TIMEOUT_MESSAGE = 'Upload is taking longer than expected. Please try again.';
-
-function isTimeoutError(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false;
-  const status = (err as { status?: number }).status;
-  return status === 504 || status === 503;
-}
-
 async function resolveAssistant(assistantId?: string | null) {
   return assistantId
     ? Assistant.findById(assistantId)
@@ -88,9 +80,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[documents POST]', error);
-    if (isTimeoutError(error)) {
-      return NextResponse.json({ error: UPLOAD_TIMEOUT_MESSAGE }, { status: 504 });
-    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
