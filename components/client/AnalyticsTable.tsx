@@ -18,6 +18,7 @@ export default function ClientAnalyticsTable({ slug }: { slug: string }) {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal]       = useState(0);
   const [loading, setLoading]   = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const fetchData = useCallback(async (f: typeof applied, p: number) => {
@@ -36,6 +37,23 @@ export default function ClientAnalyticsTable({ slug }: { slug: string }) {
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setApplied({ search, dateFrom, dateTo }); setPage(1); };
   const handleClear  = () => { setSearch(''); setDateFrom(''); setDateTo(''); setApplied({ search: '', dateFrom: '', dateTo: '' }); setPage(1); };
+
+  const handleDeleteAll = async () => {
+    const scoped = applied.search || applied.dateFrom || applied.dateTo;
+    const warning = scoped
+      ? `This will permanently delete the ${total} conversation${total !== 1 ? 's' : ''} matching the current search/date filter. This cannot be undone. Continue?`
+      : `This will permanently delete all ${total} conversation${total !== 1 ? 's' : ''} for this client. This cannot be undone. Continue?`;
+    if (!confirm(warning)) return;
+    setDeleting(true);
+    try {
+      const params = new URLSearchParams();
+      if (applied.search)   params.set('search',   applied.search);
+      if (applied.dateFrom) params.set('dateFrom', applied.dateFrom);
+      if (applied.dateTo)   params.set('dateTo',   applied.dateTo);
+      const res = await fetch(`${base}/analytics?${params}`, { method: 'DELETE' });
+      if (res.ok) { setPage(1); await fetchData(applied, 1); }
+    } finally { setDeleting(false); }
+  };
   const fmt = (ts: string) => { const d = new Date(ts); return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`; };
 
   return (
@@ -58,6 +76,10 @@ export default function ClientAnalyticsTable({ slug }: { slug: string }) {
         </div>
         <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">Search</button>
         <button type="button" onClick={handleClear} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors">Clear</button>
+        <button type="button" onClick={handleDeleteAll} disabled={deleting || total === 0}
+          className="ml-auto px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-40 transition-colors">
+          {deleting ? 'Deleting…' : 'Delete Conversations'}
+        </button>
       </form>
 
       <p className="text-sm text-gray-500 px-1">{loading ? 'Loading…' : `${total} conversation${total !== 1 ? 's' : ''} found`}</p>

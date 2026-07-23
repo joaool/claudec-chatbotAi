@@ -5,6 +5,22 @@ import Conversation from '@/models/Conversation';
 import Assistant from '@/models/Assistant';
 import Client from '@/models/Client';
 
+function buildQuery(clientId: string, searchParams: URLSearchParams): Record<string, unknown> {
+  const search   = searchParams.get('search') || '';
+  const dateFrom = searchParams.get('dateFrom');
+  const dateTo   = searchParams.get('dateTo');
+
+  const query: Record<string, unknown> = { clientId };
+  if (search) query.$text = { $search: search };
+  if (dateFrom || dateTo) {
+    const range: Record<string, Date> = {};
+    if (dateFrom) range.$gte = new Date(dateFrom);
+    if (dateTo)   range.$lte = new Date(`${dateTo}T23:59:59`);
+    query.timestamp = range;
+  }
+  return query;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -12,24 +28,14 @@ export async function GET(
   try {
     const { slug } = await params;
     const { searchParams } = new URL(request.url);
-    const search   = searchParams.get('search') || '';
-    const dateFrom = searchParams.get('dateFrom');
-    const dateTo   = searchParams.get('dateTo');
-    const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
-    const limit    = 20;
+    const page  = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit = 20;
 
     await connectDB();
     const client = await Client.findOne({ slug });
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
 
-    const query: Record<string, unknown> = { clientId: client._id.toString() };
-    if (search) query.$text = { $search: search };
-    if (dateFrom || dateTo) {
-      const range: Record<string, Date> = {};
-      if (dateFrom) range.$gte = new Date(dateFrom);
-      if (dateTo)   range.$lte = new Date(`${dateTo}T23:59:59`);
-      query.timestamp = range;
-    }
+    const query = buildQuery(client._id.toString(), searchParams);
 
     const [total, conversations] = await Promise.all([
       Conversation.countDocuments(query),
@@ -46,6 +52,27 @@ export async function GET(
     return NextResponse.json({ conversations: enriched, total, page, totalPages: Math.ceil(total / limit) });
   } catch (error) {
     console.error('[client analytics GET]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
+) {
+  try {
+    const { slug } = await params;
+    const { searchParams } = new URL(request.url);
+
+    await connectDB();
+    const client = await Client.findOne({ slug });
+    if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+
+    const query = buildQuery(client._id.toString(), searchParams);
+    const result = await Conversation.deleteMany(query);
+    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
+  } catch (error) {
+    console.error('[client analytics DELETE]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
