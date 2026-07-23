@@ -6,6 +6,14 @@ import { connectDB } from '@/lib/mongodb';
 import { decrypt } from '@/lib/crypto';
 import Assistant from '@/models/Assistant';
 
+const UPLOAD_TIMEOUT_MESSAGE = 'Upload is taking longer than expected. Please try again.';
+
+function isTimeoutError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const status = (err as { status?: number }).status;
+  return status === 504 || status === 503;
+}
+
 async function getContext(slug: string, assistantId?: string | null) {
   const db = mongoose.connection.db!;
   const clientDoc = await db.collection('clients').findOne({ slug, isActive: true });
@@ -71,6 +79,9 @@ export async function POST(
     return NextResponse.json({ success: true, file: { id: uploaded.id, filename: uploaded.filename } });
   } catch (error) {
     console.error('[client documents POST]', error);
+    if (isTimeoutError(error)) {
+      return NextResponse.json({ error: UPLOAD_TIMEOUT_MESSAGE }, { status: 504 });
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

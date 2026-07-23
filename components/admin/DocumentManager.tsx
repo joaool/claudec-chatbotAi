@@ -26,9 +26,10 @@ export default function DocumentManager() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [assistants, setAssistants] = useState<AssistantOption[]>([]);
   const [selectedId, setSelectedId] = useState('');
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [retryFile, setRetryFile] = useState<File | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Track IDs deleted by the user so polling never brings them back
@@ -83,16 +84,15 @@ export default function DocumentManager() {
     return () => clearTimeout(timer);
   }, [files, selectedId, fetchFiles]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadFile = async (file: File) => {
     if (!selectedId) {
       setError('Please create an assistant first before uploading documents.');
       return;
     }
 
-    setUploading(true);
+    setUploading(file.name);
     setError('');
+    setRetryFile(null);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -112,14 +112,24 @@ export default function DocumentManager() {
       } else {
         const data = await res.json();
         setError(data.error ?? 'Upload failed');
+        setRetryFile(file);
       }
     } catch (err) {
       setError(`Upload error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setRetryFile(file);
     } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setUploading(null);
     }
   };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploadFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRetry = () => { if (retryFile) uploadFile(retryFile); };
 
   const handleDelete = async (fileId: string) => {
     if (!confirm('Remove this document from the knowledge base?')) return;
@@ -187,7 +197,7 @@ export default function DocumentManager() {
           accept=".pdf,.txt,.md,.docx,.csv"
         />
         {uploading ? (
-          <p className="text-sm text-gray-500 animate-pulse">Uploading…</p>
+          <p className="text-sm text-gray-500 animate-pulse">Uploading: {uploading}</p>
         ) : (
           <>
             <p className="text-sm font-medium text-gray-700">Click to upload a document</p>
@@ -197,7 +207,14 @@ export default function DocumentManager() {
       </div>
 
       {error && (
-        <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+        <div className="flex items-center justify-between gap-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+          <span>{error}</span>
+          {retryFile && (
+            <button onClick={handleRetry} className="font-medium text-red-700 hover:text-red-900 shrink-0">
+              Try Again
+            </button>
+          )}
+        </div>
       )}
 
       {/* File list */}
