@@ -7,6 +7,7 @@ interface FileItem {
   size: number;
   createdAt: number;
   status: string;
+  pending?: boolean;
 }
 
 interface AssistantOption {
@@ -21,11 +22,20 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function Spinner({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
 export default function DocumentManager() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [assistants, setAssistants] = useState<AssistantOption[]>([]);
   const [selectedId, setSelectedId] = useState('');
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -55,7 +65,11 @@ export default function DocumentManager() {
         // Filter out any IDs the user has already deleted
         const fresh = (data.files ?? []) as FileItem[];
         const visible = fresh.filter((f) => !deletedIds.current.has(f.id));
-        setFiles(visible);
+        // Keep any optimistic "pending" rows the server listing hasn't caught up to yet
+        setFiles((prev) => {
+          const stillPending = prev.filter((f) => f.pending && !visible.some((v) => v.id === f.id));
+          return [...stillPending, ...visible];
+        });
         return visible;
       });
   }, []);
@@ -64,6 +78,7 @@ export default function DocumentManager() {
   useEffect(() => {
     if (!selectedId) return;
     deletedIds.current.clear();
+    setFiles([]);
     setLoading(true);
     fetchFiles(selectedId).finally(() => setLoading(false));
   }, [selectedId, fetchFiles]);
@@ -71,7 +86,7 @@ export default function DocumentManager() {
   // Poll every 3 s while any file is still in_progress
   useEffect(() => {
     if (!selectedId) return;
-    const hasPending = files.some((f) => f.status === 'in_progress');
+    const hasPending = files.some((f) => f.status === 'in_progress' || f.pending);
     if (!hasPending) return;
     const timer = setTimeout(() => fetchFiles(selectedId), 3000);
     return () => clearTimeout(timer);
@@ -85,7 +100,7 @@ export default function DocumentManager() {
       return;
     }
 
-    setUploading(true);
+    setUploading(file.name);
     setError('');
 
     const formData = new FormData();
@@ -95,6 +110,13 @@ export default function DocumentManager() {
     try {
       const res = await fetch('/api/admin/documents', { method: 'POST', body: formData });
       if (res.ok) {
+        const data = await res.json();
+        // Show the new file immediately — the vector store listing can lag a
+        // moment behind the upload, so don't wait on it to reflect the file.
+        setFiles((prev) => [
+          { id: data.file.id, filename: data.file.filename, size: file.size, status: 'in_progress', createdAt: Math.floor(Date.now() / 1000), pending: true },
+          ...prev,
+        ]);
         await fetchFiles(selectedId);
       } else {
         const data = await res.json();
@@ -103,7 +125,7 @@ export default function DocumentManager() {
     } catch (err) {
       setError(`Upload error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
-      setUploading(false);
+      setUploading(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -174,7 +196,9 @@ export default function DocumentManager() {
           accept=".pdf,.txt,.md,.docx,.csv"
         />
         {uploading ? (
-          <p className="text-sm text-gray-500 animate-pulse">Uploading…</p>
+          <p className="text-sm text-gray-500 flex items-center justify-center gap-2">
+            <Spinner className="w-4 h-4 text-blue-500" /> Uploading: {uploading}
+          </p>
         ) : (
           <>
             <p className="text-sm font-medium text-gray-700">Click to upload a document</p>
@@ -219,7 +243,7 @@ export default function DocumentManager() {
                       }`}
                     >
                       {file.status === 'in_progress' && (
-                        <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                        <Spinner className="w-3 h-3 text-yellow-500" />
                       )}
                       {file.status}
                     </span>

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-interface FileItem { id: string; filename: string; size: number; status: string; createdAt: number; }
+interface FileItem { id: string; filename: string; size: number; status: string; createdAt: number; pending?: boolean; }
 interface AssistantOption { _id: string; name: string; isDefault: boolean; }
 
 function formatSize(bytes: number) {
@@ -10,12 +10,21 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function Spinner({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
 export default function ClientDocumentManager({ slug }: { slug: string }) {
   const base = `/c/${slug}/api`;
   const [files, setFiles]           = useState<FileItem[]>([]);
   const [assistants, setAssistants] = useState<AssistantOption[]>([]);
   const [selectedId, setSelectedId] = useState('');
-  const [uploading, setUploading]   = useState(false);
+  const [uploading, setUploading]   = useState<string | null>(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
   const [deleting, setDeleting]     = useState<string | null>(null);
@@ -36,18 +45,23 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
     fetch(`${base}/documents?assistantId=${aId}`).then(r => r.json()).then(d => {
       const fresh = (d.files ?? []) as FileItem[];
       const visible = fresh.filter(f => !deletedIds.current.has(f.id));
-      setFiles(visible); return visible;
+      // Keep any optimistic "pending" rows the server listing hasn't caught up to yet
+      setFiles(prev => {
+        const stillPending = prev.filter(f => f.pending && !visible.some(v => v.id === f.id));
+        return [...stillPending, ...visible];
+      });
+      return visible;
     }), [base]);
 
   useEffect(() => {
     if (!selectedId) return;
-    deletedIds.current.clear(); setLoading(true);
+    deletedIds.current.clear(); setFiles([]); setLoading(true);
     fetchFiles(selectedId).finally(() => setLoading(false));
   }, [selectedId, fetchFiles]);
 
   useEffect(() => {
     if (!selectedId) return;
-    if (!files.some(f => f.status === 'in_progress')) return;
+    if (!files.some(f => f.status === 'in_progress' || f.pending)) return;
     const t = setTimeout(() => fetchFiles(selectedId), 3000);
     return () => clearTimeout(t);
   }, [files, selectedId, fetchFiles]);
@@ -56,14 +70,22 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!selectedId) { setError('Create an assistant first.'); return; }
-    setUploading(true); setError('');
+    setUploading(file.name); setError('');
     const fd = new FormData(); fd.append('file', file); fd.append('assistantId', selectedId);
     try {
       const res = await fetch(`${base}/documents`, { method: 'POST', body: fd });
-      if (res.ok) await fetchFiles(selectedId);
-      else { const d = await res.json(); setError(d.error ?? 'Upload failed'); }
+      if (res.ok) {
+        const d = await res.json();
+        // Show the new file immediately — the vector store listing can lag a
+        // moment behind the upload, so don't wait on it to reflect the file.
+        setFiles(prev => [
+          { id: d.file.id, filename: d.file.filename, size: file.size, status: 'in_progress', createdAt: Math.floor(Date.now() / 1000), pending: true },
+          ...prev,
+        ]);
+        await fetchFiles(selectedId);
+      } else { const d = await res.json(); setError(d.error ?? 'Upload failed'); }
     } catch (err) { setError(err instanceof Error ? err.message : 'Error'); }
-    finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+    finally { setUploading(null); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
   const handleDelete = async (fileId: string) => {
@@ -95,7 +117,11 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
       <div className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center hover:border-blue-400 transition-colors cursor-pointer"
         onClick={() => fileInputRef.current?.click()}>
         <input ref={fileInputRef} type="file" onChange={handleUpload} className="hidden" accept=".pdf,.txt,.md,.docx,.csv" />
-        {uploading ? <p className="text-sm text-gray-500 animate-pulse">Uploading…</p> : (
+        {uploading ? (
+          <p className="text-sm text-gray-500 flex items-center justify-center gap-2">
+            <Spinner className="w-4 h-4 text-blue-500" /> Uploading: {uploading}
+          </p>
+        ) : (
           <><p className="text-sm font-medium text-gray-700">Click to upload a document</p>
           <p className="text-xs text-gray-400 mt-1">PDF, TXT, MD, DOCX, CSV</p></>
         )}
@@ -127,7 +153,7 @@ export default function ClientDocumentManager({ slug }: { slug: string }) {
                   <td className="px-4 py-3 text-gray-500">{formatSize(file.size)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${file.status === 'completed' ? 'bg-green-50 text-green-700' : file.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'}`}>
-                      {file.status === 'in_progress' && <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />}
+                      {file.status === 'in_progress' && <Spinner className="w-3 h-3 text-yellow-500" />}
                       {file.status}
                     </span>
                   </td>
